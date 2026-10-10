@@ -1,0 +1,11 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+# Arquivos gerados pelo editor e pela exportação
+*.import
+/TorreDosHerois.exe
+/TorreDosHerois.pck
+
+# Cópia local de versões antigas
+/.v7-backup/
