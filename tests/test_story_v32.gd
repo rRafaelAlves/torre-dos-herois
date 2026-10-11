@@ -24,8 +24,10 @@ func check(value: bool, message: String) -> void:
 
 func _remove_test_files() -> void:
 	for path in [SAVE_PATH, SEEN_PATH]:
-		if FileAccess.file_exists(path):
-			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+		for suffix in ["", ".bak", ".tmp", ".bak.tmp"]:
+			var target: String = path + suffix
+			if FileAccess.file_exists(target):
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(target))
 
 
 func _make_game() -> Control:
@@ -42,7 +44,11 @@ func _finish_scene(game: Control) -> void:
 	var steps := 0
 	while game.narrative.active and game.narrative.scene_id == scene_id and steps < 40:
 		game.narrative.overlay.complete_text()
-		game.narrative.advance()
+		var options: Array = game.narrative._current.get("choices", [])
+		if options.is_empty():
+			game.narrative.advance()
+		else:
+			game.narrative.choose(options.back())
 		steps += 1
 	check(steps < 40, "Diálogo %s termina pelo avanço de falas" % scene_id)
 	await process_frame
@@ -58,7 +64,7 @@ func run_all() -> void:
 		check(not scene.is_empty() and not scene.get("lines", []).is_empty(), "Cena %s cadastrada" % id)
 		var lines: Array = scene.get("lines", [])
 		for index in lines.size():
-			check(lines[index].get("scene_id", "") == id and (index + 1 == lines.size() or lines[index].get("next", "") == lines[index + 1].get("id", "")), "Sequência válida em %s/%d" % [id, index])
+			check(lines[index].get("scene_id", "") == id and (index + 1 == lines.size() or not lines[index].get("choices", []).is_empty() or lines[index].get("next", "") == lines[index + 1].get("id", "")), "Sequência válida em %s/%d" % [id, index])
 	var father_speakers: Array = []
 	for line in Scenes.get_scene("encontro_pai")["lines"]:
 		father_speakers.append(line.get("speaker", ""))
@@ -82,23 +88,16 @@ func run_all() -> void:
 		await _finish_scene(game)
 		check(not game.narrative.active and game.combat.hero_ids.size() == team.size() and int(game.run.attempt["floor"]) == 1, "Combate 1 começa com equipe original")
 		check(game.run.attempt["heroes"] == initial_heroes and int(game.run.permanent["coins"]) == initial_coins and int(game.run.attempt["xp"]) == 0, "Cenas não alteram vida, mana, moedas ou XP")
-		check(bool(game.run.attempt["narrative_seen"].get("intro_reino", false)) and bool(game.run.attempt["narrative_seen"].get("encontro_pai", false)), "Conclusão fica salva na tentativa")
+		check(bool(game.run.attempt["narrative_seen"].get("intro_reino", false)) and bool(game.run.attempt["narrative_seen"].get("encontro_pai", false)), "Conclusão da tentativa atual fica registrada")
+		check(game.run.has_permanent_scene("intro_reino") and game.run.has_permanent_scene("encontro_pai"), "Prólogo e pai ficam concluídos entre expedições")
 		game.menu()
 		game.show_phase()
 		check(not game.narrative.active and int(game.run.attempt["floor"]) == 1, "Continuar não repete prólogo ou pai")
 		if team.size() == 3:
 			var old_attempt_id := str(game.run.attempt["id"])
 			game.restart_attempt()
-			check(game.narrative.active and game.narrative.scene_id == "intro_reino" and str(game.run.attempt["id"]) != old_attempt_id, "Reinício cria nova tentativa e reabre o prólogo")
-			check(game.narrative.overlay._skip_button.visible, "Prólogo visto pode ser pulado")
-			game.narrative.skip()
-			await process_frame
-			await process_frame
-			check(game.narrative.active and game.narrative.scene_id == "encontro_pai", "Pular prólogo mantém encontro do pai")
-			game.narrative.skip()
-			await process_frame
-			await process_frame
-			check(not game.narrative.active and game.combat.hero_ids.size() == 3, "Reinício retorna ao combate com os mesmos três heróis")
+			check(not game.narrative.active and str(game.run.attempt["id"]) != old_attempt_id, "Reinício cria nova tentativa sem repetir cenas permanentes")
+			check(game.combat.hero_ids.size() == 3, "Reinício retorna ao combate com os mesmos três heróis")
 		game.queue_free()
 		await process_frame
 	_remove_test_files()

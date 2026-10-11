@@ -42,13 +42,26 @@ static func hero_action(actor_id: String, action: String, target_id: String, ava
 
 static func enemy_action(actor_id: String, intention: Dictionary, living_heroes: Array[String]) -> Dictionary:
 	var kind: String = str(intention.get("id", "attack"))
-	var result := {"actor_id": actor_id, "action_id": kind, "targets": [], "style": "melee", "hits": 1, "area": kind == "shadow_wave", "status": false, "powerful": kind == "devastating_impact"}
-	if kind == "prepare_impact":
+	var result := {"actor_id": actor_id, "action_id": kind, "targets": [], "style": "melee", "hits": 1, "area": kind == "shadow_wave", "status": false, "powerful": kind in ["devastating_impact", "orc_heavy", "goblin_strike"]}
+	if kind == "orc_prepare":
+		result["style"] = "charge"
+		result["targets"] = [actor_id]
+	elif kind == "goblin_feint":
+		result["style"] = "feint"
+		result["targets"] = [actor_id]
+	elif kind == "cultist_ritual":
+		result["style"] = "curse"
+		result["status"] = true
+		result["targets"] = [str(intention.get("target_id", actor_id))]
+	elif kind == "prepare_impact":
 		result["style"] = "guard"
 		result["targets"] = [actor_id]
 	elif kind == "shadow_wave":
 		result["style"] = "curse"
 		result["targets"] = living_heroes.duplicate()
+	elif kind == "spectral_strike":
+		result["style"] = "curse"
+		result["targets"] = [str(intention.get("target_id", ""))]
 	else:
 		result["targets"] = [str(intention.get("target_id", ""))]
 	return result

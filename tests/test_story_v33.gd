@@ -26,8 +26,10 @@ func check(ok: bool, message: String) -> void:
 
 func _clean() -> void:
 	for path in [SAVE_PATH, SEEN_PATH]:
-		if FileAccess.file_exists(path):
-			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+		for suffix in ["", ".bak", ".tmp", ".bak.tmp"]:
+			var target: String = path + suffix
+			if FileAccess.file_exists(target):
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(target))
 
 
 func _game() -> Control:

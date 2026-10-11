@@ -6,6 +6,8 @@
 *.import
 /TorreDosHerois.exe
 /TorreDosHerois.pck
+/TorreDosHeroisV*.exe
+/TorreDosHeroisV*.pck
 
 # Cópia local de versões antigas
 /.v7-backup/

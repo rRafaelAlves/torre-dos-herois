@@ -32,11 +32,10 @@ func check(condition: bool, message: String) -> void:
 
 
 func reset_test_file() -> void:
-	var absolute: String = ProjectSettings.globalize_path(TEST_PATH)
-	if FileAccess.file_exists(TEST_PATH):
-		DirAccess.remove_absolute(absolute)
-	if FileAccess.file_exists(TEST_PATH + ".tmp"):
-		DirAccess.remove_absolute(absolute + ".tmp")
+	for suffix in ["", ".bak", ".tmp", ".bak.tmp"]:
+		var path: String = TEST_PATH + suffix
+		if FileAccess.file_exists(path):
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 func finish_story_for_legacy_test(game: Control) -> void:

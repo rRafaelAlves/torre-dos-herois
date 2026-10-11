@@ -22,8 +22,10 @@ func check(ok: bool, message: String) -> void:
 
 func _clean() -> void:
 	for path in [SAVE, SEEN]:
-		if FileAccess.file_exists(path):
-			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+		for suffix in ["", ".bak", ".tmp", ".bak.tmp"]:
+			var target: String = path + suffix
+			if FileAccess.file_exists(target):
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(target))
 
 
 func _game() -> Control:
@@ -153,7 +155,9 @@ func run_all() -> void:
 	var victory_summary: Dictionary = victory_game._finish_attempt("victory")
 	victory_game.show_summary(victory_summary)
 	victory_game.screen.find_child("OutcomeNewAttempt", true, false).pressed.emit()
-	check(not victory_game.narrative.active and not victory_game.run.has_pending_resurrection(), "Vitória não apresenta voz da derrota")
+	check(victory_game.narrative.active and victory_game.run.has_pending_resurrection(), "Qualquer destino após o fim da expedição mostra a garota")
+	await _finish_dialogue(victory_game)
+	check(not victory_game.run.has_pending_resurrection(), "Mensagem após vitória é concluída antes da navegação")
 	check(victory_game.screen.find_child("HeroSelectionScroll", true, false) != null, "Vitória continua para seleção normal")
 	victory_game.queue_free()
 	await process_frame

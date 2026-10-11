@@ -24,13 +24,15 @@ func run_all() -> void:
 	check(music.track_for_combat("combat", 1) == "C", "Combate comum usa C")
 	check(music.track_for_combat("combat", 5) == "B", "Andar 5 em combate usa B")
 	check(music.track_for_combat("combat", 10) == "A", "Andar 10 em combate usa A")
-	check(music.track_for_combat("between", 5) == "C", "Preparação usa C mesmo no andar 5")
-	check(music.track_for_combat("reward", 10) == "C", "Recompensa usa C mesmo no andar 10")
-	for track in ["A", "B", "C"]:
+	check(music.track_for_combat("between", 5) == "MENU", "Preparação usa Ecos da Aurora")
+	check(music.track_for_combat("reward", 10) == "MENU", "Recompensa usa Ecos da Aurora")
+	for track in ["MENU", "CAMP", "A", "B", "C"]:
 		var stream := load(music.TRACK_PATHS[track]) as AudioStreamOggVorbis
 		check(stream != null, "Faixa %s importa como OGG" % track)
 		if stream != null:
-			check(stream.loop, "Faixa %s ativa loop no import" % track)
+			stream.loop = true
+			stream.loop_offset = music.LOOP_OFFSETS[track]
+			check(stream.loop, "Faixa %s ativa loop na reprodução" % track)
 			check(is_equal_approx(stream.loop_offset, music.LOOP_OFFSETS[track]), "Faixa %s mantém o offset" % track)
 			check(stream.get_length() > 120.0, "Faixa %s tem mais de dois minutos" % track)
 			var probe := AudioStreamPlayer.new()
@@ -46,23 +48,35 @@ func run_all() -> void:
 	music.play_default()
 	await create_timer(0.12).timeout
 	var player: AudioStreamPlayer = music.get_node("MusicPlayer")
-	check(music.current_track == "C" and player.playing, "Menu inicia C")
+	check(music.current_track == "MENU" and player.playing, "Menu inicia Ecos da Aurora")
+	check(player.stream.loop and is_equal_approx(player.stream.loop_offset, 10.909), "Ecos da Aurora usa introdução única")
 	var first_stream: AudioStream = player.stream
 	var first_position: float = player.get_playback_position()
 	music.play_default()
 	await create_timer(0.12).timeout
-	check(player.stream == first_stream and player.get_playback_position() >= first_position, "Requisitar C novamente não reinicia")
+	check(player.stream == first_stream and player.get_playback_position() >= first_position, "Requisitar menu novamente não reinicia")
 	check(music.get_child_count() == 1, "Existe só um reprodutor")
+	music.play_camp()
+	await create_timer(1.4).timeout
+	check(music.current_track == "CAMP" and player.playing, "Transição do menu ao acampamento conclui")
+	check(player.stream.loop and is_equal_approx(player.stream.loop_offset, 26.667), "Brasa sob as Estrelas usa introdução única")
+	music.play_camp()
+	var camp_position: float = player.get_playback_position()
+	await create_timer(0.12).timeout
+	check(player.get_playback_position() >= camp_position, "Requisitar acampamento novamente não reinicia")
 	music.request_track("B")
 	await create_timer(1.4).timeout
-	check(music.current_track == "B" and player.playing, "Transição C para B conclui")
+	check(music.current_track == "B" and player.playing, "Transição do acampamento ao combate 5 conclui")
 	check(is_equal_approx(player.volume_db, 0.0), "Volume retorna ao original após transição")
 	music.request_track("A")
 	await create_timer(1.4).timeout
 	check(music.current_track == "A" and player.playing, "Transição B para A conclui")
+	music.request_track("C")
+	await create_timer(1.4).timeout
+	check(music.current_track == "C" and player.playing, "Combate comum mantém Lendas da Torre")
 	music.play_default()
 	await create_timer(1.4).timeout
-	check(music.current_track == "C" and player.playing, "Retorno ao menu restaura C")
+	check(music.current_track == "MENU" and player.playing, "Retorno ao menu restaura Ecos da Aurora")
 	await test_loaded_attempt(music, 5, "B")
 	await test_loaded_attempt(music, 10, "A")
 	await test_game_screens(music)
@@ -97,22 +111,42 @@ func test_game_screens(music: Node) -> void:
 	game.run.save_path = SAVE_PATH
 	root.add_child(game)
 	await create_timer(1.4).timeout
-	check(music.current_track == "C", "Tela principal solicita C")
+	check(music.current_track == "MENU", "Tela principal solicita Ecos da Aurora")
 	var player: AudioStreamPlayer = music.get_node("MusicPlayer")
 	var previous_stream: AudioStream = player.stream
 	var previous_position: float = player.get_playback_position()
 	game.show_selection()
 	await process_frame
 	check(player.stream == previous_stream and player.get_playback_position() >= previous_position, "Seleção de heróis preserva a música")
+	game.show_progression()
+	await process_frame
+	check(player.stream == previous_stream, "Progressão preserva Ecos da Aurora")
 	var heroes: Array[String] = ["guerreiro", "patrulheiro", "bruxa"]
 	check(game.run.new_attempt(heroes) and game.run.begin_floor(), "Jogo prepara combate")
 	game.run.attempt["floor"] = 5
 	game.run.attempt["completed"] = 4
-	game.open_combat()
+	game.run.attempt["phase"] = "combat"
+	game.run.attempt["merchant_camp_status"] = "visiting"
+	game.show_merchant_camp()
 	await create_timer(1.4).timeout
-	check(music.current_track == "B", "Tela de combate do andar 5 solicita B")
+	check(music.current_track == "CAMP", "Cena do acampamento solicita Brasa sob as Estrelas")
+	var camp: Control = game.screen.find_child("MerchantCamp", true, false)
+	(camp.find_child("TentHotspot", true, false) as Button).pressed.emit()
+	var options: PanelContainer = camp.find_child("MerchantInteractionMenu", true, false)
+	(options.get_child(0).get_child(3) as Button).pressed.emit()
+	await create_timer(1.4).timeout
+	check(music.current_track == "B", "Sair do acampamento restaura Coração de Ferro no combate 5")
 	game.menu()
 	await create_timer(1.4).timeout
-	check(music.current_track == "C", "Voltar ao menu restaura C")
+	check(music.current_track == "MENU", "Voltar ao menu restaura Ecos da Aurora")
+	game.run.attempt["floor"] = 10
+	game.run.attempt["completed"] = 9
+	game.run.attempt["phase"] = "combat"
+	game._show_story_stage("entrada_torre")
+	await create_timer(1.4).timeout
+	check(music.current_track == "MENU", "Narrativa do andar 10 mantém Ecos da Aurora fora do combate")
+	game.open_combat()
+	await create_timer(1.4).timeout
+	check(music.current_track == "A", "Combate do andar 10 inicia Sinfonia das Sombras")
 	game.queue_free()
 	await process_frame

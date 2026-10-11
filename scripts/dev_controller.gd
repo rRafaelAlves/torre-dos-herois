@@ -11,6 +11,7 @@ const Rules = preload("res://systems/combat_rules.gd")
 const Music = preload("res://systems/music_manager.gd")
 const Scenes = preload("res://data/narrative_scenes.gd")
 const ResurrectionFlow = preload("res://systems/resurrection_flow.gd")
+const MerchantDialogues = preload("res://data/merchant_dialogues.gd")
 
 var game: Control
 var profile: RefCounted = Profile.new()
@@ -42,6 +43,7 @@ func start_copy() -> bool:
 	_before_context_change()
 	if not profile.start_copy(game.run):
 		return false
+	game._refresh_narrative_seen()
 	game.menu()
 	game._refresh_dev_badge()
 	changed.emit()
@@ -54,6 +56,7 @@ func resume() -> bool:
 	_before_context_change()
 	if not profile.resume(game.run):
 		return false
+	game._refresh_narrative_seen()
 	game.menu()
 	game._refresh_dev_badge()
 	changed.emit()
@@ -66,6 +69,7 @@ func restore_initial() -> bool:
 	_before_context_change()
 	if not profile.restore_initial(game.run):
 		return false
+	game._refresh_narrative_seen()
 	game.menu()
 	changed.emit()
 	return true
@@ -77,6 +81,7 @@ func reset_blank() -> bool:
 	_before_context_change()
 	if not profile.reset_blank(game.run):
 		return false
+	game._refresh_narrative_seen()
 	game.menu()
 	changed.emit()
 	return true
@@ -88,6 +93,7 @@ func return_normal() -> bool:
 	_before_context_change()
 	if not profile.return_normal(game.run):
 		return false
+	game._refresh_narrative_seen()
 	game.menu()
 	game._refresh_dev_badge()
 	changed.emit()
@@ -186,6 +192,18 @@ func set_relic(relic_id: String, bearer_id: String, enabled: bool) -> bool:
 	return _rebuild_combat(Ops.set_relic(game.run, relic_id, bearer_id, enabled))
 
 
+func grant_relic(relic_id: String, mode: String) -> bool:
+	return _rebuild_combat(Ops.grant_relic(game.run, relic_id, mode))
+
+
+func remove_relic(relic_id: String, mode: String) -> bool:
+	return _rebuild_combat(Ops.remove_relic(game.run, relic_id, mode))
+
+
+func equip_relic(relic_id: String, bearer_id: String, mode: String) -> bool:
+	return _rebuild_combat(Ops.equip_relic(game.run, relic_id, bearer_id, mode))
+
+
 func clear_temporary() -> bool:
 	return _rebuild_combat(Ops.clear_temporary(game.run))
 
@@ -254,6 +272,10 @@ func preview_scene(scene_key: String) -> bool:
 		definition = ResurrectionFlow.scene_for(ResurrectionFlow.FIRST)
 	elif scene_key.begins_with("ressurreicao_"):
 		definition = ResurrectionFlow.scene_for(scene_key.trim_prefix("ressurreicao_"))
+	elif scene_key == "merchant_reunion":
+		scene_id = "encontro_comerciante"
+		definition = MerchantDialogues.encounter_scene(1, 0, 2, {})
+		definition["skippable_when_seen"] = true
 	elif scene_key in ["figura_alada", "entrada_gueist"]:
 		scene_id = "entrada_torre"
 		definition = Scenes.get_scene(scene_id)

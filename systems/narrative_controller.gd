@@ -11,6 +11,7 @@ const Overlay = preload("res://scripts/dialogue_overlay.gd")
 const SEEN_PATH := "user://narrative_seen.cfg"
 
 var seen_path := SEEN_PATH
+var persist_seen_to_file := true
 var active := false
 var scene_id := ""
 var overlay: Control
@@ -26,6 +27,8 @@ var interaction_locked := false
 
 
 func _ready() -> void:
+	if not persist_seen_to_file:
+		return
 	var config := ConfigFile.new()
 	if config.load(seen_path) == OK:
 		for id in config.get_section_keys("seen") if config.has_section("seen") else []:
@@ -65,6 +68,7 @@ func start_definition(id: String, definition: Dictionary, target: Control) -> bo
 	target.add_child(overlay)
 	overlay.set_presentation(str(definition.get("presentation", "default")))
 	overlay.advance_requested.connect(advance)
+	overlay.choice_requested.connect(choose)
 	overlay.exit_requested.connect(func() -> void: exit_requested.emit())
 	overlay.skip_requested.connect(skip)
 	overlay.set_skip_allowed(bool(definition.get("skippable_when_seen", false)) and bool(seen.get(id, false)))
@@ -95,6 +99,8 @@ func advance() -> void:
 	if overlay.is_typing():
 		overlay.complete_text()
 		return
+	if not _current.get("choices", []).is_empty():
+		return
 	var delay := maxf(0.0, float(_current.get("pause", 0.0)))
 	if delay > 0.0:
 		var waiting_scene := scene_id
@@ -107,7 +113,7 @@ func advance() -> void:
 			return
 	var next_id := str(_current.get("next", ""))
 	if bool(_current.get("end", false)) or next_id.is_empty():
-		if str(_scene.get("presentation", "")) == "resurrection":
+		if str(_scene.get("presentation", "")).begins_with("resurrection"):
 			set_interaction_locked(true)
 			var fade := create_tween()
 			fade.tween_property(overlay, "modulate:a", 0.0, 0.38)
@@ -116,6 +122,19 @@ func advance() -> void:
 				finish()
 		else:
 			finish()
+	else:
+		_show(next_id)
+
+
+func choose(choice: Dictionary) -> void:
+	if not active or interaction_locked or overlay.is_typing() or not choice in _current.get("choices", []):
+		return
+	var event_id := str(choice.get("event", ""))
+	if not event_id.is_empty():
+		event_requested.emit(event_id, choice)
+	var next_id := str(choice.get("next", ""))
+	if next_id.is_empty():
+		finish()
 	else:
 		_show(next_id)
 
@@ -134,10 +153,11 @@ func finish(mark_seen: bool = true) -> void:
 	_waiting_pause = false
 	if mark_seen:
 		seen[finished_id] = true
-		var config := ConfigFile.new()
-		for id in seen:
-			config.set_value("seen", id, seen[id])
-		config.save(seen_path)
+		if persist_seen_to_file:
+			var config := ConfigFile.new()
+			for id in seen:
+				config.set_value("seen", id, seen[id])
+			config.save(seen_path)
 	if overlay != null and is_instance_valid(overlay):
 		overlay.queue_free()
 	overlay = null

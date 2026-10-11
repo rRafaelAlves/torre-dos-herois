@@ -274,36 +274,50 @@ static func set_card(run: RefCounted, hero_id: String, card_id: String, level: i
 static func set_relic(run: RefCounted, relic_id: String, bearer_id: String, enabled: bool) -> bool:
 	if not allowed(run) or not run.has_attempt() or run.attempt.get("phase", "") != "combat" or not Relics.DEFINITIONS.has(relic_id):
 		return false
-	var relics: Array = run.attempt["relics"].duplicate(true)
-	for relic in relics:
-		if relic["id"] == relic_id:
-			relics.erase(relic)
-			break
-	if enabled:
-		var definition: Dictionary = Relics.DEFINITIONS[relic_id]
-		if bool(definition.get("bearer", false)):
-			if not bearer_id in run.attempt["hero_ids"]:
-				return false
-			if bool(definition.get("requires_mana", false)) and not Progression.uses_mana(bearer_id):
-				return false
-		else:
-			bearer_id = ""
-		relics.append({"id": relic_id, "bearer": bearer_id})
-	run.attempt["relics"] = relics
-	for hero in run.attempt["heroes"]:
-		Rules.recalculate(hero, int(run.attempt["level"]), relics)
-	return run.save()
+	if not enabled:
+		return remove_relic(run, relic_id, "temporary")
+	var uid: String = run.grant_relic(relic_id, "temporary")
+	if uid.is_empty():
+		return false
+	if Relics.DEFINITIONS[relic_id].get("scope", "hero") == "team":
+		bearer_id = ""
+	return run.equip_relic(uid, bearer_id, "dev")
+
+
+static func grant_relic(run: RefCounted, relic_id: String, mode: String) -> bool:
+	return allowed(run) and not run.grant_relic(relic_id, mode).is_empty()
+
+
+static func remove_relic(run: RefCounted, relic_id: String, mode: String) -> bool:
+	if not allowed(run):
+		return false
+	var inventory: Array = run.permanent.get("relic_inventory", []) if mode == "permanent" else run.attempt.get("relic_inventory", [])
+	for item in inventory:
+		if str(item.get("id", "")) == relic_id:
+			return run.remove_relic(str(item["uid"]), "dev")
+	return false
+
+
+static func equip_relic(run: RefCounted, relic_id: String, bearer_id: String, mode: String) -> bool:
+	if not allowed(run):
+		return false
+	var inventory: Array = run.permanent.get("relic_inventory", []) if mode == "permanent" else run.attempt.get("relic_inventory", [])
+	for item in inventory:
+		if str(item.get("id", "")) == relic_id:
+			return run.equip_relic(str(item["uid"]), bearer_id, "dev")
+	return false
 
 
 static func clear_temporary(run: RefCounted) -> bool:
 	if not allowed(run) or not run.has_attempt() or run.attempt.get("phase", "") != "combat":
 		return false
-	run.attempt["relics"] = []
+	run.attempt["relic_inventory"] = []
+	run.attempt["relics"] = run._active_permanent_relics(run.attempt["hero_ids"])
 	run.attempt["level"] = 1
 	run.attempt["xp"] = 0
 	for hero in run.attempt["heroes"]:
 		hero["cards"] = {}
-		Rules.recalculate(hero, 1, [])
+		Rules.recalculate(hero, 1, run.attempt["relics"])
 	return run.save()
 
 
@@ -324,6 +338,8 @@ static func edit_fighter(run: RefCounted, combat: RefCounted, fighter_id: String
 	else:
 		return false
 	combat.fighters[fighter_id] = fighter
+	if field == "hp" and fighter_id == "guardiao":
+		combat.sync_boss_phase()
 	_snapshot_fighter(run, fighter_id, fighter)
 	return run.save()
 
@@ -431,6 +447,7 @@ static func restore_combat_overrides(run: RefCounted, combat: RefCounted) -> voi
 		fighter["state_effects"] = override.get("state_effects", {}).duplicate(true)
 		fighter["skill_cooldowns"] = override.get("skill_cooldowns", {}).duplicate(true)
 		combat.fighters[fighter_id] = fighter
+	combat.sync_boss_phase()
 
 
 static func restart_combat(run: RefCounted) -> bool:

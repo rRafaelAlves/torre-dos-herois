@@ -3,6 +3,10 @@ extends RefCounted
 const Enemies = preload("res://data/enemies.gd")
 
 const MAX_FLOOR := 10
+const REGULAR_ENEMY_HP_MULTIPLIER := 1.08
+const REGULAR_ENEMY_DAMAGE_MULTIPLIER := 0.9
+const GUEIST_HP_BONUS := 250
+const GUEIST_DAMAGE_MULTIPLIER := 1.3
 const ENEMY_FLOOR_BONUSES := {
 	3: {"hp": 20, "damage": 4},
 	4: {"hp": 27, "damage": 5},
@@ -72,6 +76,14 @@ static func enemies_for(floor_number: int, route_id: String, _party_size: int) -
 		var floor_bonus: Dictionary = ENEMY_FLOOR_BONUSES.get(floor_number, {})
 		enemy["max_hp"] += int(floor_bonus.get("hp", 0)) + int(route.get("hp", 0))
 		enemy["damage"] += int(floor_bonus.get("damage", 0)) + int(route.get("damage", 0))
+		if type_id == "guardiao":
+			enemy["max_hp"] += GUEIST_HP_BONUS
+			enemy["damage"] = maxi(1, roundi(float(enemy["damage"]) * GUEIST_DAMAGE_MULTIPLIER))
+			if enemy.has("special_damage"):
+				enemy["special_damage"] = maxi(1, roundi(float(enemy["special_damage"]) * GUEIST_DAMAGE_MULTIPLIER))
+		else:
+			enemy["max_hp"] = maxi(1, roundi(float(enemy["max_hp"]) * REGULAR_ENEMY_HP_MULTIPLIER))
+			enemy["damage"] = maxi(1, roundi(float(enemy["damage"]) * REGULAR_ENEMY_DAMAGE_MULTIPLIER))
 		enemy["initiative"] += int(route.get("initiative", 0))
 		enemy["physical_resist"] = clampf(float(enemy.get("physical_resist", 0.0)) + float(route.get("physical_resist", 0.0)), 0.0, 0.75)
 		enemy["magical_resist"] = clampf(float(enemy.get("magical_resist", 0.0)) + float(route.get("magical_resist", 0.0)), 0.0, 0.75)

@@ -49,7 +49,16 @@ const SCENES := {
 			{"speaker": "comerciante", "text": "Aquilo que a esperava."},
 			{"speaker": "feiticeiro", "text": "Como você sabe disso?"},
 			{"speaker": "comerciante", "text": "Há muitas coisas que se aprende viajando."},
-			{"speaker": "comerciante", "text": "Enfim... precisam de suprimentos? A estrada adiante costuma ser cruel com os despreparados."}
+			{"speaker": "comerciante", "text": "Enfim... precisam de suprimentos? A estrada adiante costuma ser cruel com os despreparados.", "next": "convite_acampamento"},
+			{"id": "convite_acampamento", "speaker": "comerciante", "text": "Tenho algumas mercadorias interessantes no meu acampamento, não muito longe daqui. Gostariam de dar uma olhada?", "choices": [
+				{"text": "Claro, por que não?", "event": "camp:accept"},
+				{"text": "Por que deveríamos confiar em você?", "next": "duvida_acampamento"},
+				{"text": "Agora não, obrigado.", "event": "camp:decline"}
+			]},
+			{"id": "duvida_acampamento", "speaker": "comerciante", "text": "Confiar? Não peço tanto. A fogueira está acesa; podem olhar e partir quando quiserem.", "choices": [
+				{"text": "Claro, por que não?", "event": "camp:accept"},
+				{"text": "Agora não, obrigado.", "event": "camp:decline"}
+			]}
 		]
 	},
 	"conselho_comerciante": {
@@ -102,6 +111,28 @@ const SCENES := {
 			{"speaker": "", "type": "narration", "event": "tower:finale", "text": "FIM DO PRÓLOGO\nTORRE DOS HERÓIS"}
 		]
 	},
+	"fragmento_luz_andar_3": {
+		"presentation": "light_fragment",
+		"first": "fragmento_luz_andar_3_inicio",
+		"lines": [
+			{"id": "fragmento_luz_andar_3_inicio", "speaker": "", "name": "LUZ ENTRE AS PEDRAS", "type": "narration", "text": "Um brilho dourado pulsa entre as raízes. Por um instante, parece esperar por alguém.", "choices": [
+				{"text": "Tocar o fragmento", "next": "fragmento_luz_andar_3_memoria"},
+				{"text": "Seguir em frente", "event": "fragment:ignore:fragmento_luz_andar_3"}
+			]},
+			{"id": "fragmento_luz_andar_3_memoria", "speaker": "", "name": "FRAGMENTO DE LUZ", "type": "narration", "event": "fragment:found:fragmento_luz_andar_3", "text": "Alguém segurou minha mão naquele dia... Lembro-me de prometer que tudo ficaria bem.", "end": true}
+		]
+	},
+	"fragmento_luz_andar_8": {
+		"presentation": "light_fragment",
+		"first": "fragmento_luz_andar_8_inicio",
+		"lines": [
+			{"id": "fragmento_luz_andar_8_inicio", "speaker": "", "name": "LUZ ENTRE AS PEDRAS", "type": "narration", "text": "Um fragmento dourado flutua no ar. A luz vacila, como se guardasse uma lembrança.", "choices": [
+				{"text": "Tocar o fragmento", "next": "fragmento_luz_andar_8_memoria"},
+				{"text": "Seguir em frente", "event": "fragment:ignore:fragmento_luz_andar_8"}
+			]},
+			{"id": "fragmento_luz_andar_8_memoria", "speaker": "", "name": "FRAGMENTO DE LUZ", "type": "narration", "event": "fragment:found:fragmento_luz_andar_8", "text": "Por um instante, senti uma solidão que não era minha. Era como se alguém tivesse passado a eternidade esperando por algo que nunca conheceu.", "end": true}
+		]
+	},
 	"demo_narrativa": {
 		"skippable_when_seen": true,
 		"first": "guerreiro_1",
@@ -124,7 +155,7 @@ static func get_scene(id: String) -> Dictionary:
 		if not entry.has("id"):
 			entry["id"] = "%s_%02d" % [id, index + 1]
 		entry["scene_id"] = id
-		if not entry.has("next") and not entry.has("end"):
+		if not entry.has("next") and not entry.has("end") and entry.get("choices", []).is_empty():
 			entry["next"] = "%s_%02d" % [id, index + 2] if index + 1 < lines.size() else ""
 			if index + 1 == lines.size():
 				entry["end"] = true

@@ -21,13 +21,15 @@ def rgb(hex_color):
 
 
 class Sprite:
-    def __init__(self):
-        self.pixels = [bytearray(b"\0" * SIZE * 4) for _ in range(SIZE)]
+    def __init__(self, width=SIZE, height=SIZE):
+        self.width = width
+        self.height = height
+        self.pixels = [bytearray(b"\0" * width * 4) for _ in range(height)]
 
     def box(self, x, y, width, height, color):
         color = rgb(color)
-        for py in range(max(0, y), min(SIZE, y + height)):
-            for px in range(max(0, x), min(SIZE, x + width)):
+        for py in range(max(0, y), min(self.height, y + height)):
+            for px in range(max(0, x), min(self.width, x + width)):
                 self.pixels[py][px * 4 : px * 4 + 4] = color
 
     def dot(self, x, y, color):
@@ -55,7 +57,7 @@ class Sprite:
         def chunk(tag, data):
             return struct.pack(">I", len(data)) + tag + data + struct.pack(">I", zlib.crc32(tag + data))
 
-        header = struct.pack(">IIBBBBB", SIZE, SIZE, 8, 6, 0, 0, 0)
+        header = struct.pack(">IIBBBBB", self.width, self.height, 8, 6, 0, 0, 0)
         path.write_bytes(
             b"\x89PNG\r\n\x1a\n"
             + chunk(b"IHDR", header)
@@ -230,10 +232,18 @@ def guardiao():
     s.box(8, 3, 10, 8, INK)
     s.box(9, 4, 8, 6, "#6d4b3e")
     s.box(11, 7, 4, 4, "#a27756")
-    s.box(11, 8, 1, 1, "#dcbd8b")
-    s.box(14, 8, 1, 1, "#dcbd8b")
+    s.box(10, 7, 2, 1, "#40312c")
+    s.box(14, 7, 2, 1, "#40312c")
+    s.dot(11, 8, "#e8d8b7")
+    s.dot(14, 8, "#e8d8b7")
+    s.dot(13, 9, "#dcbd8b")
     s.line(8, 5, 5, 1, "#d8c6a4")
     s.line(17, 5, 20, 1, "#d8c6a4")
+    # Fine gold horn bands and helmet rivets enrich the original silhouette.
+    s.dot(6, 3, "#bb985f")
+    s.dot(19, 3, "#bb985f")
+    s.dot(8, 10, "#d8c6a4")
+    s.dot(17, 10, "#d8c6a4")
     s.box(4, 1, 2, 3, "#e8d8b7")
     s.box(20, 1, 2, 3, "#e8d8b7")
     s.box(19, 5, 2, 17, "#704b32")
@@ -241,7 +251,51 @@ def guardiao():
     s.box(18, 3, 6, 4, "#b9bec0")
     s.box(1, 11, 6, 8, INK)
     s.box(2, 12, 4, 6, "#75777d")
+    # A small sunburst crest and armor seams, using the existing boss palette.
+    s.line(9, 12, 15, 16, "#bb985f")
+    s.dot(12, 13, "#e8d8b7")
+    s.dot(13, 14, "#bb985f")
+    s.dot(12, 15, "#e8d8b7")
+    s.dot(9, 18, "#bb985f")
+    s.dot(15, 18, "#bb985f")
+    s.dot(7, 11, "#e8d8b7")
+    s.dot(17, 11, "#e8d8b7")
+    s.dot(3, 13, "#bb985f")
+    s.dot(5, 17, "#d8c6a4")
+    # Small metal wraps and a rune make the original poleaxe easier to read.
+    s.box(19, 12, 2, 1, "#bb985f")
+    s.box(19, 16, 2, 1, "#d8c6a4")
+    s.dot(21, 4, "#bb985f")
+    s.dot(20, 5, "#e8d8b7")
     return s
+
+
+def guardiao_boss_sheet():
+    """Five close idle poses of the original guardiao pixel sprite, enlarged 2x."""
+    source = guardiao()
+    frame_width, frame_height = 48, 64
+    sheet = Sprite(frame_width * 5, frame_height)
+    body_bob = [0, -1, -2, -1, 0]
+    head_sway = [0, 1, 1, -1, 0]
+    weapon_sway = [0, 1, 3, -2, -1]
+    for frame in range(5):
+        for y in range(frame_height):
+            source_y = min(SIZE - 1, max(0, int((y - body_bob[frame]) * SIZE / frame_height)))
+            for x in range(frame_width):
+                source_x = min(SIZE - 1, x // 2)
+                source_pixel = source.pixels[source_y][source_x * 4 : source_x * 4 + 4]
+                if source_pixel[3] == 0:
+                    continue
+                sway = 0
+                if source_y <= 10:
+                    sway += head_sway[frame]
+                if source_x >= 18 and 4 <= source_y <= 22:
+                    sway += weapon_sway[frame]
+                destination_x = x + sway
+                if 0 <= destination_x < frame_width:
+                    offset = destination_x * 4
+                    sheet.pixels[y][(frame * frame_width * 4) + offset : (frame * frame_width * 4) + offset + 4] = source_pixel
+    return sheet
 
 
 def garota_cena():
@@ -381,7 +435,11 @@ SIDE_SPRITES = {
 
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
+    guardiao().png(OUT / "guardiao.png")
+    guardiao_boss_sheet().png(OUT / "guardiao_boss_sheet.png")
     for name, create in SPRITES.items():
+        if name == "guardiao":
+            continue
         create().png(OUT / f"{name}.png")
     for name, create in SIDE_SPRITES.items():
         create().png(OUT / f"{name}_lado.png")

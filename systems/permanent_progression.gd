@@ -9,10 +9,10 @@ const MANA_REGEN_BASE := 2
 const MANA_REGEN_POINTS_PER_STEP := 2
 const ORDER := ["vitalidade", "poder", "agilidade", "resistencia", "mana"]
 const DEFINITIONS := {
-	"vitalidade": {"name": "Vitalidade", "per_point": "+5 PV máximos"},
-	"poder": {"name": "Poder", "per_point": "+1 dano no ataque básico"},
+	"vitalidade": {"name": "Vitalidade", "per_point": "+7 PV máximos"},
+	"poder": {"name": "Poder", "per_point": "+3 dano no ataque básico"},
 	"agilidade": {"name": "Agilidade", "per_point": "+1 iniciativa"},
-	"resistencia": {"name": "Resistência", "per_point": "+1 p.p. resistência física e mágica"},
+	"resistencia": {"name": "Resistência", "per_point": "+2 p.p. resistência física e mágica"},
 	"mana": {"name": "Mana", "per_point": "+3 mana máxima · a cada 2 pontos, +1 mana recuperada por turno", "requires_mana": true},
 }
 
@@ -127,6 +127,22 @@ static func invest(entry: Dictionary, hero_id: String, attribute_id: String) -> 
 	return true
 
 
+static func can_refund(entry: Dictionary, hero_id: String, attribute_id: String) -> bool:
+	if not DEFINITIONS.has(attribute_id) or (attribute_id == "mana" and not uses_mana(hero_id)):
+		return false
+	return int(entry.get("attributes", {}).get(attribute_id, 0)) > 0
+
+
+static func refund(entry: Dictionary, hero_id: String, attribute_id: String) -> bool:
+	if not can_refund(entry, hero_id, attribute_id):
+		return false
+	var attributes: Dictionary = entry["attributes"]
+	attributes[attribute_id] = int(attributes[attribute_id]) - 1
+	entry["attributes"] = attributes
+	entry["available_points"] = maxi(0, int(entry["level"]) - 1 - invested_points(attributes) - special_cost(entry.get("unlocked_specials", [])))
+	return true
+
+
 static func can_unlock(entry: Dictionary, hero_id: String, skill_id: String) -> bool:
 	if not skill_id in Skills.SPECIALS.get(hero_id, []) or skill_id in entry.get("unlocked_specials", []):
 		return false
@@ -146,10 +162,10 @@ static func unlock(entry: Dictionary, hero_id: String, skill_id: String) -> bool
 
 static func total_effect(attribute_id: String, points: int) -> String:
 	match attribute_id:
-		"vitalidade": return "+%d PV máximos" % (points * 5)
-		"poder": return "+%d dano básico" % points
+		"vitalidade": return "+%d PV máximos" % (points * 7)
+		"poder": return "+%d dano básico" % (points * 3)
 		"agilidade": return "+%d iniciativa" % points
-		"resistencia": return "+%d p.p. resistências" % points
+		"resistencia": return "+%d p.p. resistências" % (points * 2)
 		"mana":
 			var regen: int = mana_regen_per_turn(points)
 			return "+%d mana máxima · %d mana por turno" % [points * 3, regen]

@@ -1,11 +1,14 @@
 extends Node
 
 const TRACK_PATHS := {
+	"MENU": "res://assets/audio/music/Torre_dos_Herois_Ecos_da_Aurora_Menu.ogg",
+	"CAMP": "res://assets/audio/music/Torre_dos_Herois_Brasa_sob_as_Estrelas.ogg",
+	"ENDING": "res://assets/audio/music/Torre_dos_Herois_Enquanto_Houver_Luz_Final.ogg",
 	"C": "res://assets/audio/music/Torre_dos_Herois_C_Lendas_da_Torre_Godot_Loop_Intro_Unica.ogg",
 	"B": "res://assets/audio/music/Torre_dos_Herois_B_Coracao_de_Ferro_Godot_Loop_Intro_Unica.ogg",
 	"A": "res://assets/audio/music/Torre_dos_Herois_A_Sinfonia_das_Sombras_Mimosa_Dark_Godot_Loop_Intro_Unica.ogg",
 }
-const LOOP_OFFSETS := {"C": 9.948, "B": 9.199, "A": 10.085}
+const LOOP_OFFSETS := {"MENU": 10.909, "CAMP": 26.667, "C": 9.948, "B": 9.199, "A": 10.085}
 const SILENT_DB := -60.0
 const FADE_OUT_SECONDS := 0.5
 const FADE_IN_SECONDS := 0.8
@@ -25,7 +28,7 @@ func _ready() -> void:
 
 static func track_for_combat(phase: String, floor: int) -> String:
 	if phase != "combat":
-		return "C"
+		return "MENU"
 	if floor == 5:
 		return "B"
 	if floor == 10:
@@ -34,7 +37,15 @@ static func track_for_combat(phase: String, floor: int) -> String:
 
 
 func play_default() -> void:
-	request_track("C")
+	request_track("MENU")
+
+
+func play_camp() -> void:
+	request_track("CAMP")
+
+
+func play_ending() -> void:
+	request_track("ENDING")
 
 
 func play_for_combat(attempt: Dictionary) -> void:
@@ -72,8 +83,9 @@ func _start_track(track: String) -> void:
 		push_error("Não foi possível carregar a música %s." % track)
 		return
 	# Mantém o loop correto mesmo se o importador refizer o recurso em outra máquina.
-	music_stream.loop = true
-	music_stream.loop_offset = LOOP_OFFSETS[track]
+	music_stream.loop = track != "ENDING"
+	if LOOP_OFFSETS.has(track):
+		music_stream.loop_offset = LOOP_OFFSETS[track]
 	_player.stop()
 	_player.stream = music_stream
 	_player.volume_db = SILENT_DB

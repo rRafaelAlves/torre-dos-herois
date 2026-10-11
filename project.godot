@@ -19,10 +19,7 @@ config/icon="res://icon.svg"
 
 MusicManager="*res://systems/music_manager.gd"
 AudioManager="*res://systems/audio_manager.gd"
-
-[audio]
-
-buses/default_bus_layout="res://default_bus_layout.tres"
+LocaleManager="*res://systems/locale_manager.gd"
 
 [display]
 

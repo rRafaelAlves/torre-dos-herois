@@ -108,8 +108,8 @@ func _build_shell() -> void:
 
 func _label(value: String, size: int = 13, color: Color = LIGHT) -> Label:
 	var node := Label.new()
-	node.text = value
-	node.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	LocaleManager.set_text(node, value)
+	node.autowrap_mode = TextServer.AUTOWRAP_WORD
 	node.add_theme_font_size_override("font_size", size)
 	node.add_theme_color_override("font_color", color)
 	return node
@@ -117,7 +117,7 @@ func _label(value: String, size: int = 13, color: Color = LIGHT) -> Label:
 
 func _button(value: String) -> Button:
 	var node := Button.new()
-	node.text = value
+	LocaleManager.set_text(node, value)
 	node.custom_minimum_size = Vector2(112, 34)
 	node.add_theme_font_size_override("font_size", 12)
 	node.add_theme_color_override("font_color", LIGHT)
@@ -145,7 +145,7 @@ func _add_button(row: Control, title: String, action: Callable, needs_dev: bool 
 	node.disabled = needs_dev and not controller.active()
 	node.pressed.connect(func() -> void:
 		var result: Variant = action.call()
-		_feedback.text = "%s: %s" % [title, "feito" if result == true else "não aplicado"]
+		LocaleManager.set_text(_feedback, "%s: %s" % [title, "feito" if result == true else "não aplicado"])
 		_refresh()
 	)
 	row.add_child(node)
@@ -167,7 +167,7 @@ func _option(items: Array, current: String) -> OptionButton:
 	var picker := OptionButton.new()
 	picker.custom_minimum_size = Vector2(195, 35)
 	for index in items.size():
-		picker.add_item(items[index], index)
+		picker.add_item(LocaleManager.localize(str(items[index])), index)
 		picker.set_item_metadata(index, items[index])
 	var position := items.find(current)
 	picker.select(maxi(0, position))
@@ -177,12 +177,12 @@ func _option(items: Array, current: String) -> OptionButton:
 func _confirm(title: String, message: String, action: Callable) -> void:
 	var dialog := ConfirmationDialog.new()
 	dialog.process_mode = Node.PROCESS_MODE_ALWAYS
-	dialog.title = title
-	dialog.dialog_text = message
+	dialog.title = LocaleManager.localize(title)
+	dialog.dialog_text = LocaleManager.localize(message)
 	add_child(dialog)
 	dialog.confirmed.connect(func() -> void:
 		var ok: Variant = action.call()
-		_feedback.text = "%s: %s" % [title, "feito" if ok == true else "não aplicado"]
+		LocaleManager.set_text(_feedback, "%s: %s" % [title, "feito" if ok == true else "não aplicado"])
 		_refresh()
 	)
 	dialog.visibility_changed.connect(func() -> void:
@@ -209,7 +209,7 @@ func _refresh() -> void:
 		context = str(game.run.attempt.get("phase", "expedição"))
 	var floor_number := str(game.run.attempt.get("floor", "—"))
 	var team: String = ", ".join(game.run.attempt.get("hero_ids", [])) if game.run.has_attempt() else "sem equipe"
-	_status.text = "PERFIL: %s  |  CONTEXTO: %s  |  ANDAR: %s  |  EQUIPE: %s" % [profile_name, context, floor_number, team]
+	LocaleManager.set_text(_status, "PERFIL: %s  |  CONTEXTO: %s  |  ANDAR: %s  |  EQUIPE: %s" % [profile_name, context, floor_number, team])
 	for child in _body.get_children():
 		child.queue_free()
 		_body.remove_child(child)
@@ -249,7 +249,7 @@ func _build_profile() -> void:
 			_confirm("Substituir perfil DEV", "A cópia anterior e seu estado inicial serão substituídos pelos dados normais atuais.", controller.start_copy)
 		else:
 			var ok: bool = controller.start_copy()
-			_feedback.text = "Iniciar teste: %s" % ("feito" if ok else "não aplicado")
+			LocaleManager.set_text(_feedback, "Iniciar teste: %s" % ("feito" if ok else "não aplicado"))
 			_refresh()
 	)
 	row.add_child(start)
@@ -347,11 +347,11 @@ func _build_tower() -> void:
 	var floor_field := _spin(current, 1, 10)
 	row.add_child(floor_field)
 	var preserve := CheckBox.new()
-	preserve.text = "Preservar equipe e recursos"
+	LocaleManager.set_text(preserve, "Preservar equipe e recursos")
 	preserve.button_pressed = true
 	row.add_child(preserve)
 	var story := CheckBox.new()
-	story.text = "Exibir cena do andar"
+	LocaleManager.set_text(story, "Exibir cena do andar")
 	row.add_child(story)
 	_add_button(row, "Ir", func() -> bool: return controller.jump_floor(int(floor_field.value), preserve.button_pressed, story.button_pressed))
 	var moves := _row()
@@ -370,7 +370,7 @@ func _build_team() -> void:
 	var options := _row()
 	for hero_id in Heroes.ORDER:
 		var checkbox := CheckBox.new()
-		checkbox.text = Heroes.DEFINITIONS[hero_id]["name"]
+		LocaleManager.set_text(checkbox, Heroes.DEFINITIONS[hero_id]["name"])
 		checkbox.button_pressed = hero_id in team_selection
 		checkbox.toggled.connect(func(pressed: bool) -> void:
 			if pressed and not hero_id in team_selection:
@@ -381,7 +381,7 @@ func _build_team() -> void:
 		options.add_child(checkbox)
 	var row := _row()
 	var preserve := CheckBox.new()
-	preserve.text = "Preservar heróis já presentes"
+	LocaleManager.set_text(preserve, "Preservar heróis já presentes")
 	preserve.button_pressed = true
 	row.add_child(preserve)
 	_add_button(row, "Aplicar equipe", func() -> bool: return controller.set_team(team_selection, preserve.button_pressed))
@@ -494,13 +494,19 @@ func _build_resources() -> void:
 	var relic_picker := _option(relic_ids, selected_relic)
 	relic_picker.item_selected.connect(func(index: int) -> void: selected_relic = str(relic_picker.get_item_metadata(index)))
 	relic_row.add_child(relic_picker)
-	var bearer_picker := _option(team, team[0])
+	var bearer_options: Array = ["grupo"]
+	bearer_options.append_array(team)
+	var bearer_picker := _option(bearer_options, team[0])
 	relic_row.add_child(bearer_picker)
-	_add_button(relic_row, "Adicionar relíquia", func() -> bool: return controller.set_relic(selected_relic, str(bearer_picker.get_item_metadata(bearer_picker.selected)), true))
-	_add_button(relic_row, "Remover relíquia", func() -> bool: return controller.set_relic(selected_relic, "", false))
+	var mode_picker := _option(["permanent", "temporary"], "temporary")
+	relic_row.add_child(mode_picker)
+	_add_button(relic_row, "Conceder cópia", func() -> bool: return controller.grant_relic(selected_relic, str(mode_picker.get_item_metadata(mode_picker.selected))))
+	_add_button(relic_row, "Equipar cópia", func() -> bool: return controller.equip_relic(selected_relic, "" if Relics.DEFINITIONS[selected_relic].get("scope", "hero") == "team" or str(bearer_picker.get_item_metadata(bearer_picker.selected)) == "grupo" else str(bearer_picker.get_item_metadata(bearer_picker.selected)), str(mode_picker.get_item_metadata(mode_picker.selected))))
+	_add_button(relic_row, "Remover cópia", func() -> bool: return controller.remove_relic(selected_relic, str(mode_picker.get_item_metadata(mode_picker.selected))))
 	var clear_row := _row()
 	_add_button(clear_row, "Limpar bônus temporários", controller.clear_temporary)
-	_body.add_child(_label("Relíquias: %s" % str(attempt["relics"]), 11, MUTED))
+	_body.add_child(_label("Equipadas: %s" % str(attempt["relics"]), 11, MUTED))
+	_body.add_child(_label("Inventário permanente: %d · temporário: %d" % [controller.game.run.permanent.get("relic_inventory", []).size(), attempt.get("relic_inventory", []).size()], 11, MUTED))
 
 
 func _build_narrative() -> void:
@@ -509,7 +515,9 @@ func _build_narrative() -> void:
 		return
 	var scenes := [
 		["Introdução da torre", "intro_reino"], ["Pai da garota", "encontro_pai"],
-		["Comerciante", "encontro_comerciante"], ["Entrada da torre · completa", "entrada_torre"],
+		["Comerciante", "encontro_comerciante"], ["Comerciante · reencontro", "merchant_reunion"],
+		["Fragmento de Luz · andar 3", "fragmento_luz_andar_3"], ["Fragmento de Luz · andar 8", "fragmento_luz_andar_8"],
+		["Entrada da torre · completa", "entrada_torre"],
 		["Figura alada", "figura_alada"], ["Entrada de Gueist", "entrada_gueist"],
 		["Epílogo de Gueist", "epilogo_gueist"], ["Primeira derrota", "ressurreicao_primeira"],
 		["Derrota · escuridão", "ressurreicao_darkness"], ["Derrota · rara", "ressurreicao_rare"]

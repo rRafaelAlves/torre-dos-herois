@@ -21,12 +21,19 @@ const SIDE_TEXTURES := {
 	"sacerdotisa": preload("res://assets/combat_sprites/sacerdotisa_lado.png"),
 	"feiticeiro": preload("res://assets/combat_sprites/feiticeiro_lado.png"),
 }
+const GUEIST_BOSS_SHEET = preload("res://assets/combat_sprites/guardiao_boss_sheet.png")
+const GUEIST_FRAME_SIZE := Vector2i(48, 64)
+const GUEIST_FRAME_COUNT := 5
 
 static var _idle_frames: Dictionary = {}
+static var _gueist_frames: Array[Texture2D] = []
 
 
 static func texture_for(fighter_id: String) -> Texture2D:
-	return TEXTURES.get(_base_fighter_id(fighter_id))
+	var base_id := _base_fighter_id(fighter_id)
+	if base_id == "guardiao":
+		return _gueist_idle_frames()[0]
+	return TEXTURES.get(base_id)
 
 
 static func side_texture_for(hero_id: String) -> Texture2D:
@@ -44,6 +51,10 @@ static func _base_fighter_id(fighter_id: String) -> String:
 static func idle_frames_for(fighter_id: String) -> Array[Texture2D]:
 	if _idle_frames.has(fighter_id):
 		return _idle_frames[fighter_id]
+	if _base_fighter_id(fighter_id) == "guardiao":
+		var gueist_frames := _gueist_idle_frames()
+		_idle_frames[fighter_id] = gueist_frames
+		return gueist_frames
 	var base: Texture2D = side_texture_for(fighter_id)
 	if base == null:
 		base = texture_for(fighter_id)
@@ -72,3 +83,15 @@ static func idle_frames_for(fighter_id: String) -> Array[Texture2D]:
 		frames.append(ImageTexture.create_from_image(frame))
 	_idle_frames[fighter_id] = frames
 	return frames
+
+
+static func _gueist_idle_frames() -> Array[Texture2D]:
+	if not _gueist_frames.is_empty():
+		return _gueist_frames
+	for frame_index in GUEIST_FRAME_COUNT:
+		var frame := AtlasTexture.new()
+		frame.atlas = GUEIST_BOSS_SHEET
+		frame.region = Rect2(GUEIST_FRAME_SIZE.x * frame_index, 0, GUEIST_FRAME_SIZE.x, GUEIST_FRAME_SIZE.y)
+		frame.filter_clip = true
+		_gueist_frames.append(frame)
+	return _gueist_frames

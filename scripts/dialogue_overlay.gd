@@ -1,6 +1,7 @@
 extends Control
 
 signal advance_requested
+signal choice_requested(choice: Dictionary)
 signal skip_requested
 signal exit_requested
 
@@ -24,6 +25,7 @@ var _panel: PanelContainer
 var _name_label: Label
 var _body: RichTextLabel
 var _continue: Label
+var _choices: VBoxContainer
 var _accent_bar: ColorRect
 var _skip_button: Button
 
@@ -55,7 +57,7 @@ func _build() -> void:
 	_portrait.anchor_bottom = 0.82
 	add_child(_portrait)
 	_silhouette = Label.new()
-	_silhouette.text = "RETRATO EM PREPARAÇÃO"
+	LocaleManager.set_text(_silhouette, "RETRATO EM PREPARAÇÃO")
 	_silhouette.add_theme_font_size_override("font_size", 18)
 	_silhouette.add_theme_color_override("font_color", Color("c6c0b4"))
 	_silhouette.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -93,7 +95,7 @@ func _build() -> void:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(spacer)
 	_skip_button = Button.new()
-	_skip_button.text = "PULAR CENA"
+	LocaleManager.set_text(_skip_button, "PULAR CENA")
 	_skip_button.flat = true
 	_skip_button.add_theme_font_size_override("font_size", 12)
 	_skip_button.add_theme_color_override("font_color", Color("c3cbd0"))
@@ -108,14 +110,18 @@ func _build() -> void:
 	_body.name = "DialogueText"
 	_body.add_theme_font_size_override("normal_font_size", 21)
 	_body.add_theme_color_override("default_color", PAPER)
-	_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_body.autowrap_mode = TextServer.AUTOWRAP_WORD
 	_body.scroll_active = true
 	_body.bbcode_enabled = false
 	_body.mouse_filter = Control.MOUSE_FILTER_PASS
 	_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(_body)
+	_choices = VBoxContainer.new()
+	_choices.visible = false
+	_choices.add_theme_constant_override("separation", 5)
+	content.add_child(_choices)
 	_continue = Label.new()
-	_continue.text = "◆  AVANÇAR"
+	LocaleManager.set_text(_continue, "◆  AVANÇAR")
 	_continue.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_continue.add_theme_font_size_override("font_size", 12)
 	_continue.add_theme_color_override("font_color", Color("e3c477"))
@@ -132,11 +138,38 @@ func _build() -> void:
 
 
 func show_line(entry: Dictionary) -> void:
+	_choices.visible = false
+	for child in _choices.get_children():
+		_choices.remove_child(child)
+		child.queue_free()
+	var options: Array = entry.get("choices", [])
+	_panel.anchor_top = 0.49 if not options.is_empty() else 0.675
+	for option in options:
+		var choice_button := Button.new()
+		LocaleManager.set_text(choice_button, str(option.get("text", "")))
+		choice_button.custom_minimum_size.y = 34
+		choice_button.add_theme_font_size_override("font_size", 15)
+		choice_button.add_theme_color_override("font_color", PAPER)
+		var choice_style := StyleBoxFlat.new()
+		choice_style.bg_color = Color("172937")
+		choice_style.border_color = Color("766e59")
+		choice_style.set_border_width_all(1)
+		choice_style.set_corner_radius_all(3)
+		choice_style.content_margin_left = 12
+		choice_style.content_margin_right = 12
+		choice_button.add_theme_stylebox_override("normal", choice_style)
+		var hover_style := choice_style.duplicate()
+		hover_style.bg_color = Color("344351")
+		hover_style.border_color = Color("d5b96d")
+		choice_button.add_theme_stylebox_override("hover", hover_style)
+		choice_button.add_theme_stylebox_override("focus", hover_style)
+		choice_button.pressed.connect(_select_choice.bind(option))
+		_choices.add_child(choice_button)
 	var speaker_id := str(entry.get("speaker", ""))
 	var character: Dictionary = CharacterData.get_character(speaker_id)
 	var kind := str(entry.get("type", "dialogue"))
 	var display_name := str(entry.get("name", character.get("name", "NARRADOR")))
-	_name_label.text = display_name.to_upper()
+	LocaleManager.set_text(_name_label, display_name.to_upper())
 	var accent := Color(str(character.get("accent", "d5b96d")))
 	_name_label.add_theme_color_override("font_color", accent)
 	_accent_bar.color = Color("8296cf") if presentation == "resurrection" else accent
@@ -161,7 +194,7 @@ func show_line(entry: Dictionary) -> void:
 		tween.tween_property(_portrait, "modulate:a", 1.0, 0.18)
 	_current_speaker = speaker_id
 	_full_text = str(entry.get("text", ""))
-	_body.text = _full_text
+	LocaleManager.set_text(_body, _full_text)
 	_body.add_theme_color_override("default_color", Color("cdd8e2") if kind == "thought" else PAPER)
 	_body.visible_characters = 0
 	_elapsed = 0.0
@@ -172,7 +205,23 @@ func show_line(entry: Dictionary) -> void:
 
 func set_presentation(variant: String) -> void:
 	presentation = variant
-	if variant != "resurrection":
+	if variant == "light_fragment":
+		_shade.color = Color(0.13, 0.095, 0.025, 0.62)
+		_accent_bar.color = Color("f0d37e")
+		_name_label.add_theme_color_override("font_color", Color("f5d77f"))
+		var fragment_frame := StyleBoxFlat.new()
+		fragment_frame.bg_color = Color("17202a", 0.96)
+		fragment_frame.border_color = Color("e8c57e")
+		fragment_frame.set_border_width_all(2)
+		fragment_frame.set_corner_radius_all(4)
+		fragment_frame.content_margin_left = 26
+		fragment_frame.content_margin_right = 26
+		fragment_frame.content_margin_top = 20
+		fragment_frame.content_margin_bottom = 15
+		_panel.add_theme_stylebox_override("panel", fragment_frame)
+		_spawn_fragment_sparkles()
+		return
+	if not variant.begins_with("resurrection"):
 		return
 	_shade.color = Color(0.005, 0.006, 0.016, 0.17)
 	_panel.anchor_left = 0.13
@@ -195,8 +244,13 @@ func set_presentation(variant: String) -> void:
 	_accent_bar.anchor_bottom = 0.588
 	_accent_bar.color = Color("8296cf")
 	_name_label.add_theme_color_override("font_color", Color("acbde7"))
-	_skip_button.text = "MENU"
+	LocaleManager.set_text(_skip_button, "MENU")
 	_skip_button.visible = true
+	if variant == "resurrection_silent":
+		_panel.visible = false
+		_accent_bar.visible = false
+		_skip_button.visible = false
+		return
 	_panel.modulate.a = 0.0
 	_accent_bar.modulate.a = 0.0
 	var fade := create_tween().set_parallel(true)
@@ -205,7 +259,23 @@ func set_presentation(variant: String) -> void:
 
 
 func set_skip_allowed(allowed: bool) -> void:
-	_skip_button.visible = true if presentation == "resurrection" else allowed
+	_skip_button.visible = true if presentation.begins_with("resurrection") and presentation != "resurrection_silent" else allowed
+
+
+func _spawn_fragment_sparkles() -> void:
+	for index in 14:
+		var mote := Label.new()
+		LocaleManager.set_text(mote, "✦" if index % 3 == 0 else "·")
+		mote.position = Vector2(randf_range(0.04, 0.96) * size.x, randf_range(0.08, 0.62) * size.y)
+		mote.size = Vector2(18, 18)
+		mote.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mote.add_theme_font_size_override("font_size", 9 if index % 3 == 0 else 16)
+		mote.add_theme_color_override("font_color", Color("f6d77f", randf_range(0.45, 0.9)))
+		add_child(mote)
+		var rise := create_tween().set_parallel(true)
+		rise.tween_property(mote, "position:y", mote.position.y - randf_range(18.0, 48.0), randf_range(1.0, 1.8))
+		rise.tween_property(mote, "modulate:a", 0.0, 1.2).set_delay(0.25)
+		rise.finished.connect(mote.queue_free)
 
 
 func _process(delta: float) -> void:
@@ -220,8 +290,15 @@ func _process(delta: float) -> void:
 func complete_text() -> void:
 	_typing = false
 	_body.visible_characters = -1
-	_continue.visible = true
+	_choices.visible = _choices.get_child_count() > 0
+	_continue.visible = not _choices.visible
+	if _choices.visible:
+		(_choices.get_child(0) as Button).grab_focus()
 	set_process(false)
+
+
+func _select_choice(choice: Dictionary) -> void:
+	choice_requested.emit(choice)
 
 
 func is_typing() -> bool:
@@ -231,9 +308,11 @@ func is_typing() -> bool:
 func _input(event: InputEvent) -> void:
 	if not input_enabled:
 		return
+	if _choices.visible:
+		return
 	if event is InputEventMouseButton and event.pressed and _skip_button.visible and _skip_button.get_global_rect().has_point(event.position):
 		return
-	if presentation == "resurrection" and event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+	if presentation.begins_with("resurrection") and event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 		get_viewport().set_input_as_handled()
 		exit_requested.emit()
 		return

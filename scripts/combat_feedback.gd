@@ -4,6 +4,7 @@ signal sfx_cue(sound_name: String, volume_db: float)
 
 const CombatSprites = preload("res://data/combat_sprites.gd")
 const ActionGlyph = preload("res://scripts/combat_action_glyph.gd")
+const HeroSkillEffect = preload("res://scripts/hero_skill_effect.gd")
 
 const IDLE_FRAME_SECONDS := 0.29
 const DAMAGE_SECONDS := 0.24
@@ -30,6 +31,9 @@ var idle_frame: int = 0
 var active_actor: String = ""
 var displayed_event_count: int = 0
 var action_number_offsets: Dictionary = {}
+var boss_phase_active := false
+var boss_phase_elapsed := 0.0
+var boss_phase_burst := 0.0
 
 
 func bind_arena(arena_cards: Dictionary, hero_ids: Array[String]) -> void:
@@ -41,12 +45,14 @@ func bind_arena(arena_cards: Dictionary, hero_ids: Array[String]) -> void:
 		origins[fighter_id] = sprite.position
 		teams[fighter_id] = "hero" if fighter_id in hero_ids else "enemy"
 		var idle_frames: Array[Texture2D] = CombatSprites.idle_frames_for(fighter_id)
-		if idle_frames.size() == 3:
+		if idle_frames.size() >= 3:
 			frames[fighter_id] = idle_frames
 	set_process(true)
 
 
 func update_fighters(fighters: Dictionary) -> void:
+	if bool(fighters.get("guardiao", {}).get("boss_phase_two", false)):
+		boss_phase_active = true
 	for fighter_id in sprites:
 		var fighter: Dictionary = fighters.get(fighter_id, {})
 		var alive: bool = fighter.get("state", "") == "alive" and int(fighter.get("hp", 0)) > 0
@@ -149,17 +155,78 @@ func _spawn_reward_popup(center: Vector2, reward: Dictionary) -> void:
 
 
 func _process(delta: float) -> void:
+	if boss_phase_active and living.get("guardiao", false):
+		boss_phase_elapsed += delta
+		boss_phase_burst = maxf(0.0, boss_phase_burst - delta / 0.9)
+		queue_redraw()
 	idle_elapsed += delta
 	if idle_elapsed < IDLE_FRAME_SECONDS:
 		return
 	idle_elapsed = fmod(idle_elapsed, IDLE_FRAME_SECONDS)
-	idle_frame = (idle_frame + 1) % 3
+	idle_frame += 1
 	for fighter_id in frames:
 		if not living.get(fighter_id, false) or reactions.has(fighter_id) or fighter_id == active_actor:
 			continue
 		var sprite: TextureRect = sprites[fighter_id]
 		if is_instance_valid(sprite):
-			sprite.texture = frames[fighter_id][idle_frame]
+			var actor_frames: Array = frames[fighter_id]
+			sprite.texture = actor_frames[idle_frame % actor_frames.size()]
+
+
+func _draw() -> void:
+	if not boss_phase_active or not living.get("guardiao", false) or not sprites.has("guardiao") or not is_instance_valid(sprites["guardiao"]):
+		return
+	var center := _center_of("guardiao") + Vector2(0, -3)
+	var pulse := 0.5 + 0.5 * sin(boss_phase_elapsed * 3.1)
+	var radius := 43.0 + pulse * 4.0 + boss_phase_burst * 20.0
+	draw_arc(center, radius, 0.0, TAU, 48, Color(0.56, 0.43, 0.87, 0.19 + pulse * 0.12), 2.0, false)
+	draw_arc(center, radius + 7.0, 0.0, TAU, 48, Color(0.42, 0.65, 0.96, 0.09 + boss_phase_burst * 0.38), 1.0, false)
+	for index in 7:
+		var angle := TAU * float(index) / 7.0 + boss_phase_elapsed * 0.42
+		var point := center + Vector2(cos(angle), sin(angle)) * (radius + 4.0 + sin(boss_phase_elapsed * 2.0 + float(index)) * 4.0)
+		draw_circle(point, 1.5 + boss_phase_burst * 2.0, Color(0.75, 0.79, 1.0, 0.38 + pulse * 0.22))
+
+
+func play_boss_phase_transition() -> void:
+	if not is_inside_tree() or not sprites.has("guardiao") or not is_instance_valid(sprites["guardiao"]):
+		return
+	boss_phase_active = true
+	boss_phase_burst = 1.0
+	var boss_sprite: TextureRect = sprites["guardiao"]
+	var center := _center_of("guardiao")
+	var veil := ColorRect.new()
+	veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	veil.color = Color(0.04, 0.03, 0.11, 0.0)
+	veil.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	add_child(veil)
+	var title := Label.new()
+	LocaleManager.set_text(title, "FASE II · O ECLIPSE")
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.position = Vector2(clampf(center.x - 120.0, 0.0, maxf(0.0, size.x - 240.0)), maxf(5.0, center.y - 94.0))
+	title.size = Vector2(240, 28)
+	title.add_theme_font_size_override("font_size", 18)
+	title.add_theme_color_override("font_color", Color("d7cbff"))
+	title.add_theme_color_override("font_outline_color", Color("1b1430"))
+	title.add_theme_constant_override("outline_size", 4)
+	add_child(title)
+	sfx_cue.emit("curse", -1.0)
+	var reveal := create_tween()
+	reveal.set_parallel(true)
+	reveal.tween_property(veil, "color:a", 0.32, 0.28)
+	reveal.tween_property(boss_sprite, "scale", Vector2(1.16, 1.16), 0.34).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	reveal.tween_property(title, "position:y", title.position.y - 15.0, 0.72).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	reveal.tween_property(title, "modulate:a", 0.0, 0.72).set_delay(0.38)
+	await reveal.finished
+	if not is_inside_tree():
+		return
+	var release := create_tween()
+	release.set_parallel(true)
+	release.tween_property(veil, "color:a", 0.0, 0.35)
+	release.tween_property(boss_sprite, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	await release.finished
+	veil.queue_free()
+	title.queue_free()
 
 
 func show_events(visual_events: Array) -> void:
@@ -201,7 +268,13 @@ func play_action(action: Dictionary, visual_events: Array) -> void:
 		impact_targets = actual_targets
 	active_actor = actor_id
 	_emit_start_sound(action)
+	var skill_id: String = str(action.get("action_id", "")).trim_prefix("skill:") if str(action.get("action_id", "")).begins_with("skill:") else ""
+	if not skill_id.is_empty() and teams.get(actor_id, "") == "hero":
+		_spawn_hero_skill_effect(skill_id, actor_id, "cast")
 	action_number_offsets.clear()
+	if actor_id == "guardiao" and str(action.get("action_id", "")) in ["attack", "shadow_wave", "devastating_impact", "spectral_strike"]:
+		await _play_guardiao_action(action, visual_events, impact_targets, sprite, origin)
+		return
 	var advance: float = 10.0 if style == "melee" else 3.0
 	if teams[actor_id] == "enemy":
 		advance *= -1.0
@@ -212,7 +285,15 @@ func play_action(action: Dictionary, visual_events: Array) -> void:
 	await ready.finished
 	if not is_inside_tree():
 		return
-	if style == "melee":
+	if style == "feint":
+		var feint: Tween = create_tween()
+		feint.tween_property(sprite, "position", origin + Vector2(12, -4), 0.10)
+		feint.tween_property(sprite, "position", origin + Vector2(-10, -2), 0.10)
+		await feint.finished
+		await _flash_at(actor_id, "feint", Color("d5cf9d"))
+	elif style == "charge":
+		await _flash_at(actor_id, "slash", Color("dc825d"), true)
+	elif style == "melee":
 		var lunge: Tween = create_tween()
 		lunge.tween_property(sprite, "position", origin + Vector2(advance, -2.0), 0.12)
 		await lunge.finished
@@ -258,6 +339,8 @@ func play_action(action: Dictionary, visual_events: Array) -> void:
 				_emit_projectile_sound(style)
 				await _projectile(actor_id, impact_targets[0], projectile_style, tint)
 				await _flash_at(impact_targets[0], projectile_style, tint)
+			if not skill_id.is_empty():
+				_spawn_hero_skill_effect(skill_id, impact_targets[0], "impact")
 			show_events(other_events)
 			await _return_actor(sprite, origin)
 			return
@@ -268,8 +351,116 @@ func play_action(action: Dictionary, visual_events: Array) -> void:
 		for target_id in impact_targets:
 			await _flash_at(target_id, projectile_style, tint)
 	if is_inside_tree():
+		if not skill_id.is_empty():
+			for target_id in impact_targets:
+				_spawn_hero_skill_effect(skill_id, target_id, "impact")
 		show_events(visual_events)
 		await _return_actor(sprite, origin)
+
+
+func _spawn_hero_skill_effect(skill_id: String, fighter_id: String, phase: String) -> void:
+	if not sprites.has(fighter_id) or not is_instance_valid(sprites[fighter_id]):
+		return
+	var effect = HeroSkillEffect.new()
+	effect.skill_id = skill_id
+	effect.phase = phase
+	effect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(effect)
+	effect.position = _center_of(fighter_id) - Vector2(60, 60)
+
+
+func _play_guardiao_action(action: Dictionary, visual_events: Array, impact_targets: Array[String], sprite: TextureRect, origin: Vector2) -> void:
+	var action_id: String = str(action.get("action_id", ""))
+	var direction: float = -1.0 if teams.get("guardiao", "enemy") == "enemy" else 1.0
+	sprite.pivot_offset = sprite.size * 0.5
+	match action_id:
+		"attack":
+			var windup := create_tween()
+			windup.set_parallel(true)
+			windup.tween_property(sprite, "position", origin + Vector2(-direction * 5.0, -5.0), 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			windup.tween_property(sprite, "rotation_degrees", 10.0, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			windup.tween_property(sprite, "scale", Vector2(1.08, 0.94), 0.18)
+			await windup.finished
+			var strike := create_tween()
+			strike.set_parallel(true)
+			strike.tween_property(sprite, "position", origin + Vector2(direction * 17.0, -1.0), 0.10).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+			strike.tween_property(sprite, "rotation_degrees", -13.0, 0.10).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+			strike.tween_property(sprite, "scale", Vector2(0.94, 1.06), 0.10)
+			await strike.finished
+			_emit_impact_sound(action, visual_events)
+			for target_id in impact_targets:
+				await _flash_at(target_id, "slash", Color("c9b5a2"), true)
+		"shadow_wave":
+			await _play_guardiao_shadow_wave(visual_events, impact_targets, sprite, origin)
+		"spectral_strike":
+			var windup := create_tween()
+			windup.set_parallel(true)
+			windup.tween_property(sprite, "position", origin + Vector2(-direction * 6.0, -9.0), 0.24).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			windup.tween_property(sprite, "rotation_degrees", 9.0, 0.24)
+			windup.tween_property(sprite, "self_modulate", Color("aaa2e7"), 0.24)
+			await windup.finished
+			if not is_inside_tree():
+				return
+			var strike := create_tween()
+			strike.set_parallel(true)
+			strike.tween_property(sprite, "position", origin + Vector2(direction * 19.0, -3.0), 0.13).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_IN)
+			strike.tween_property(sprite, "rotation_degrees", -17.0, 0.13)
+			await strike.finished
+			_emit_impact_sound(action, visual_events)
+			for target_id in impact_targets:
+				await _flash_at(target_id, "spectral_blade", Color("aebaff"), true)
+		"devastating_impact":
+			var charge := create_tween()
+			charge.set_parallel(true)
+			charge.tween_property(sprite, "position", origin + Vector2(-direction * 4.0, -9.0), 0.23).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			charge.tween_property(sprite, "rotation_degrees", 7.0, 0.23)
+			charge.tween_property(sprite, "self_modulate", Color("d8a8a0"), 0.23)
+			await charge.finished
+			var slam := create_tween()
+			slam.set_parallel(true)
+			slam.tween_property(sprite, "position", origin + Vector2(direction * 20.0, 4.0), 0.11).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_IN)
+			slam.tween_property(sprite, "rotation_degrees", -15.0, 0.11)
+			slam.tween_property(sprite, "scale", Vector2(1.12, 0.88), 0.11)
+			await slam.finished
+			_emit_impact_sound(action, visual_events)
+			for target_id in impact_targets:
+				await _flash_at(target_id, "slash", Color("f0c38a"), true)
+	if is_inside_tree():
+		show_events(visual_events)
+		await _return_actor(sprite, origin)
+
+
+func _play_guardiao_shadow_wave(visual_events: Array, impact_targets: Array[String], sprite: TextureRect, origin: Vector2) -> void:
+	var charge := create_tween()
+	charge.set_parallel(true)
+	var direction: float = -1.0 if teams.get("guardiao", "enemy") == "enemy" else 1.0
+	charge.tween_property(sprite, "position", origin + Vector2(-direction * 4.0, -7.0), 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	charge.tween_property(sprite, "scale", Vector2(1.12, 1.12), 0.22)
+	charge.tween_property(sprite, "self_modulate", Color("bb8bd4"), 0.22)
+	await charge.finished
+	if not is_inside_tree():
+		return
+	var center: Vector2 = _center_of("guardiao")
+	for ring_index in 3:
+		var wave: Control = ActionGlyph.new()
+		wave.style = "shadow_wave"
+		wave.tint = Color("b77be2") if ring_index == 0 else Color("7950ad")
+		wave.size = Vector2(24, 24)
+		wave.pivot_offset = wave.size * 0.5
+		wave.position = center - wave.size * 0.5
+		wave.scale = Vector2(0.35, 0.35)
+		wave.modulate.a = 0.92
+		add_child(wave)
+		var expand := create_tween()
+		expand.set_parallel(true)
+		expand.tween_property(wave, "scale", Vector2(12.0, 12.0), 0.52).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		expand.tween_property(wave, "modulate:a", 0.0, 0.52).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		expand.finished.connect(wave.queue_free)
+		if ring_index < 2:
+			await get_tree().create_timer(0.09, false).timeout
+	_emit_impact_sound({"action_id": "shadow_wave"}, visual_events)
+	for target_id in impact_targets:
+		await _flash_at(target_id, "curse", Color("b77be2"), true)
 
 
 func _emit_start_sound(action: Dictionary) -> void:
@@ -282,6 +473,8 @@ func _emit_start_sound(action: Dictionary) -> void:
 		"curse": sound_name = "curse"
 		"sacred": sound_name = "holy"
 		"guard": sound_name = "shield"
+		"charge": sound_name = "shield"
+		"feint": sound_name = "bow"
 	sfx_cue.emit(sound_name, 1.0 if bool(action.get("powerful", false)) else -2.0)
 
 
@@ -321,10 +514,14 @@ func _return_actor(sprite: TextureRect, origin: Vector2) -> void:
 	back.set_parallel(true)
 	back.tween_property(sprite, "position", origin, 0.16)
 	back.tween_property(sprite, "rotation_degrees", 0.0, 0.16)
+	back.tween_property(sprite, "scale", Vector2.ONE, 0.16)
+	back.tween_property(sprite, "self_modulate", Color.WHITE, 0.16)
 	await back.finished
 	if is_instance_valid(sprite):
 		sprite.position = origin
 		sprite.rotation_degrees = 0.0
+		sprite.scale = Vector2.ONE
+		sprite.self_modulate = Color.WHITE
 	active_actor = ""
 	action_number_offsets.clear()
 
@@ -363,7 +560,7 @@ func _flash_at(fighter_id: String, glyph_style: String, tint: Color, powerful: b
 
 func _center_of(fighter_id: String) -> Vector2:
 	var sprite: TextureRect = sprites[fighter_id]
-	return sprite.global_position - global_position + Vector2(16, 18)
+	return sprite.global_position - global_position + sprite.size * 0.5
 
 
 func _action_color(style: String) -> Color:

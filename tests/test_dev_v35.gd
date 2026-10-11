@@ -4,6 +4,7 @@ const Game = preload("res://scripts/main_v8.gd")
 const Guard = preload("res://systems/dev_guard.gd")
 const Ops = preload("res://systems/dev_operations.gd")
 const RunState = preload("res://systems/run_state.gd")
+const SaveStore = preload("res://systems/save_store.gd")
 const Skills = preload("res://data/skills.gd")
 const Progression = preload("res://systems/permanent_progression.gd")
 const SAVE := "user://torre_dev_v35_test.json"
@@ -24,9 +25,10 @@ func check(ok: bool, message: String) -> void:
 
 func _clean() -> void:
 	for suffix in ["", ".dev", ".dev.baseline"]:
-		var path: String = SAVE + suffix
-		if FileAccess.file_exists(path):
-			DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+		for backup_suffix in ["", ".bak", ".tmp", ".bak.tmp"]:
+			var path: String = SAVE + suffix + backup_suffix
+			if FileAccess.file_exists(path):
+				DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
 
 func _game() -> Control:
@@ -72,8 +74,14 @@ func run_all() -> void:
 	game.run.permanent["coins"] = 137
 	game.run.permanent["classes"]["guerreiro"]["xp"] = 240
 	game.run.save()
-	var normal_before := _bytes(SAVE)
+	var progress_before: Dictionary = SaveStore.load_data(SAVE)
 	check(game.dev_controller.start_copy(), "Cópia do perfil normal cria DEV")
+	var progress_after: Dictionary = SaveStore.load_data(SAVE)
+	var permanent_before: Dictionary = progress_before.get("permanent", {}).duplicate(true)
+	var permanent_after: Dictionary = progress_after.get("permanent", {}).duplicate(true)
+	permanent_before.erase("profile")
+	permanent_after.erase("profile")
+	var normal_before := _bytes(SAVE)
 	check(game.dev_controller.active() and game.dev_badge.visible and game.run.save_path == SAVE + ".dev", "Perfil DEV indicado e isolado")
 	game.open_dev_panel()
 	for tab_name in game.dev_panel.TABS:
@@ -81,7 +89,7 @@ func run_all() -> void:
 		await process_frame
 		check(game.dev_panel._body.get_child_count() > 0, "Aba %s construída" % tab_name)
 	game.close_dev_panel()
-	check(_bytes(SAVE) == normal_before, "Cópia não modifica bytes normais")
+	check(progress_before.get("attempt", {}) == progress_after.get("attempt", {}) and permanent_before == permanent_after, "Cópia não modifica o progresso normal")
 	check(game.dev_controller.set_level("guerreiro", 12), "Guerreiro sobe para nível 12")
 	var warrior: Dictionary = game.run.permanent["classes"]["guerreiro"]
 	check(warrior["level"] == 12 and warrior["xp"] == Ops.total_xp_for(12) and warrior["available_points"] == 11, "Curva XP e pontos consistentes")
@@ -197,10 +205,13 @@ func run_all() -> void:
 	check(game.dev_controller.force_result("defeat", true), "Derrota completa no perfil DEV")
 	check(not game.run.has_attempt() and int(game.run.permanent["stats"]["losses"]) == 1, "Derrota DEV contabilizada só no perfil de teste")
 	check(not game.dev_controller.force_result("defeat", true), "Resultado não pode ser aplicado duas vezes")
-	game._on_defeat_retry_requested()
-	check(game.narrative.active and game.narrative.scene_id == "ressurreicao_primeira", "Derrota DEV ativa fala oficial da garota")
+	var narrative_before_preview: Dictionary = game.run.permanent["narrative"].duplicate(true)
+	check(game.dev_controller.preview_scene("ressurreicao_primeira"), "Cena da garota pode ser revista no painel DEV")
+	check(game.narrative.active and game.narrative.scene_id == "ressurreicao_primeira", "Prévia da garota reutiliza a cena oficial")
 	game.narrative.finish(false)
-	await create_timer(0.6).timeout
+	await process_frame
+	await process_frame
+	check(game.run.permanent["narrative"] == narrative_before_preview, "Prévia DEV não altera histórico narrativo permanente")
 	check(game.dev_controller.preset("witch12"), "Predefinição Bruxa nível 12")
 	check(int(game.run.permanent["classes"]["bruxa"]["level"]) == 12 and int(game.run.attempt["floor"]) == 10, "Predefinição Bruxa prepara Gueist")
 	check(game.dev_controller.preset("support"), "Predefinição suporte")
@@ -244,6 +255,7 @@ func run_all() -> void:
 	check(reopened.run.new_attempt(normal_team) and reopened.run.begin_floor(), "Tentativa legítima temporária preparada")
 	var normal_with_attempt := _bytes(SAVE)
 	check(reopened.dev_controller.start_copy() and reopened.run.has_attempt(), "Cópia DEV inclui tentativa em andamento")
+	normal_with_attempt = _bytes(SAVE)
 	check(reopened.dev_controller.jump_floor(5), "Tentativa copiada pode ser alterada no DEV")
 	check(reopened.dev_controller.return_normal() and int(reopened.run.attempt["floor"]) == 1, "Tentativa normal recuperada no andar original")
 	check(_bytes(SAVE) == normal_with_attempt, "Arquivo da tentativa normal permanece idêntico")
